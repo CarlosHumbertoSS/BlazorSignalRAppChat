@@ -1,0 +1,108 @@
+﻿@page "/"
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+
+
+<div>
+    <label>
+        Usuario:
+    </label>
+    <input  @bind="NickName" />
+    <button @onclick="SignIn">
+        Registrar
+    </button>
+    <div>@SignInMessage</div>
+</div>
+<div>
+    <label>
+        Mensaje:
+    </label>
+    <input @bind="Message" />
+</div>
+<button @onclick="Send" disabled="@(!IsConnected)" >Mensaje:</button>
+<div>
+    Usuarios:
+    @foreach(var User in Users)
+    {
+        @($"*{User}");
+    }
+</div>
+<hr />
+<ul>
+    @foreach(var Message in  Messages)
+    {
+        <li>
+            @Message
+        </li>
+    }
+</ul>
+
+
+@code{
+    string NickName { get; set; }
+    string Message { get; set; }
+    List<string> Messages = new List<string>();
+    List<string> Users = new List<string>();
+    bool IsSign { get; set; }
+    string SignInMessage;
+
+    HubConnection HubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HubConnection = new HubConnectionBuilder().
+            WithUrl(NavigationManager.ToAbsoluteUri("/chathub")).Build();
+        //HubConnection.On<string, string>("ReceiveMessage", (user, message) => {
+        //    Messages.Add($"{user}:{message}");
+        //    StateHasChanged();
+        //});
+        HubConnection.On<string,string>(nameof(ReceiveMessage), ReceiveMessage);
+        HubConnection.On<string>(nameof(UserConnected), UserConnected);
+        HubConnection.On<string>(nameof(UserDesconnected), UserDesconnected);
+        await HubConnection.StartAsync();
+    }
+
+    void UserConnected(string user)
+    {
+        Users.Add(user);
+        Messages.Add($"{user} se ha conectado");
+        StateHasChanged();
+    }
+
+    void UserDesconnected(string user)
+    {
+        Users.Remove(user);
+        Messages.Add($"{user} se ha desconectado");
+        StateHasChanged();
+    }
+
+    void ReceiveMessage(string user,string message)
+    {
+        Messages.Add($"{user}:{message}");
+        StateHasChanged();
+    }
+
+
+    Task Send() => HubConnection.SendAsync("SendMessage", Message);
+
+    async Task SignIn()
+    {
+        var Result = await HubConnection.InvokeAsync<bool>("SingIn", NickName);
+        if(Result)
+        {
+            SignInMessage = "!Usuario Registrado¡";
+        }
+        else
+        {
+            SignInMessage = "El Usuario ya existe";
+        }
+    }
+
+    public bool IsConnected => HubConnection.State == HubConnectionState.Connected;
+
+    public void Dispose()
+    {
+        _ = HubConnection.DisposeAsync();
+    }
+}
